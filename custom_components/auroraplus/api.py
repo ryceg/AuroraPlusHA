@@ -29,11 +29,11 @@ def aurora_init(access_token: str):
     return session
 
 
-async def aurora_oauth_authorize(hass, username: str, password: str):
+async def aurora_oauth_authorize(hass):
     """Start OAuth authorization flow and return auth URL."""
     try:
         def _oauth_authorize():
-            session = auroraplus.api(username, password)
+            session = auroraplus.api()  # No credentials needed for OAuth
             auth_url = session.oauth_authorize()
             return auth_url, session
         

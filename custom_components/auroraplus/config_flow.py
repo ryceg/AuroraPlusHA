@@ -24,8 +24,6 @@ from .api import aurora_init, aurora_oauth_authorize, aurora_oauth_complete, aur
 from .const import (
     CONF_ROUNDING,
     CONF_SERVICE_AGREEMENT_ID,
-    CONF_USERNAME,
-    CONF_PASSWORD,
     CONF_AUTH_URL,
     CONF_REDIRECT_URL,
     DEFAULT_MONITORED,
@@ -44,12 +42,6 @@ AUTH_SCHEMA = vol.Schema(
     }
 )
 
-OAUTH_STEP1_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-    }
-)
 
 OAUTH_STEP3_SCHEMA = vol.Schema(
     {
@@ -77,7 +69,7 @@ class AuroraPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle initial step - offer OAuth or manual token."""
         if user_input is not None:
             if user_input.get("auth_method") == "oauth":
-                return await self.async_step_oauth_credentials()
+                return await self.async_step_oauth_authorize()
             else:
                 return await self.async_step_manual_token()
         
@@ -161,42 +153,31 @@ class AuroraPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema({}),
             )
 
-        return await self.async_step_oauth_credentials()
+        return await self.async_step_oauth_authorize()
 
-    async def async_step_oauth_credentials(self, user_input=None):
-        """Handle OAuth credentials step."""
+    async def async_step_oauth_authorize(self, user_input=None):
+        """Start OAuth flow and display auth URL."""
         errors = {}
+        
         if user_input is not None:
-            self._username = user_input[CONF_USERNAME]
-            self._password = user_input[CONF_PASSWORD]
-            
+            return await self.async_step_oauth_complete()
+        
+        # If this is the first time, start OAuth flow
+        if self._auth_url is None:
             try:
-                auth_url, oauth_session = await aurora_oauth_authorize(
-                    self.hass, self._username, self._password
-                )
+                auth_url, oauth_session = await aurora_oauth_authorize(self.hass)
                 self._auth_url = auth_url
                 self._oauth_session = oauth_session
-                return await self.async_step_oauth_authorize()
             except ConfigEntryAuthFailed:
-                errors["base"] = "invalid_auth"
+                errors["base"] = "oauth_failed"
             except Exception:
                 errors["base"] = "unknown"
         
         return self.async_show_form(
-            step_id="oauth_credentials",
-            data_schema=OAUTH_STEP1_SCHEMA,
-            errors=errors,
-        )
-
-    async def async_step_oauth_authorize(self, user_input=None):
-        """Display auth URL and wait for user to complete MFA."""
-        if user_input is not None:
-            return await self.async_step_oauth_complete()
-        
-        return self.async_show_form(
             step_id="oauth_authorize",
             data_schema=vol.Schema({}),
-            description_placeholders={"auth_url": self._auth_url},
+            description_placeholders={"auth_url": self._auth_url or ""},
+            errors=errors,
         )
 
     async def async_step_oauth_complete(self, user_input=None):
