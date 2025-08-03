@@ -28,6 +28,47 @@ def aurora_init(access_token: str):
         raise e
     return session
 
+
+async def aurora_oauth_authorize(hass, username: str, password: str):
+    """Start OAuth authorization flow and return auth URL."""
+    try:
+        def _oauth_authorize():
+            session = auroraplus.api(username, password)
+            auth_url = session.oauth_authorize()
+            return auth_url, session
+        
+        auth_url, session = await hass.async_add_executor_job(_oauth_authorize)
+        return auth_url, session
+    except Exception as e:
+        _LOGGER.error(f"OAuth authorization failed: {e}")
+        raise ConfigEntryAuthFailed(f"OAuth authorization failed: {e}") from e
+
+
+async def aurora_oauth_complete(hass, session, redirect_url: str):
+    """Complete OAuth flow with redirect URL and return token info."""
+    try:
+        def _oauth_complete():
+            token_info = session.oauth_redirect(redirect_url)
+            return token_info
+        
+        token_info = await hass.async_add_executor_job(_oauth_complete, session, redirect_url)
+        return token_info
+    except Exception as e:
+        _LOGGER.error(f"OAuth completion failed: {e}")
+        raise ConfigEntryAuthFailed(f"OAuth completion failed: {e}") from e
+
+
+async def aurora_validate_oauth_token(hass, access_token: str):
+    """Validate an OAuth token by testing API access."""
+    try:
+        session = await hass.async_add_executor_job(aurora_init, access_token)
+        return session
+    except ConfigEntryAuthFailed:
+        raise
+    except Exception as e:
+        _LOGGER.error(f"Token validation failed: {e}")
+        raise ConfigEntryAuthFailed(f"Token validation failed: {e}") from e
+
 class AuroraApi():
     """Asynchronously-updating wrapper for the Aurora API. """
     _hass = None

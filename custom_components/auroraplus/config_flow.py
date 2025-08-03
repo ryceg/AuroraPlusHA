@@ -20,10 +20,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 import voluptuous as vol
 
-from .api import aurora_init
+from .api import aurora_init, aurora_oauth_authorize, aurora_oauth_complete, aurora_validate_oauth_token
 from .const import (
     CONF_ROUNDING,
     CONF_SERVICE_AGREEMENT_ID,
+    CONF_USERNAME,
+    CONF_PASSWORD,
+    CONF_AUTH_URL,
+    CONF_REDIRECT_URL,
     DEFAULT_MONITORED,
     DEFAULT_ROUNDING,
     DEFAULT_SCAN_INTERVAL,
@@ -40,26 +44,64 @@ AUTH_SCHEMA = vol.Schema(
     }
 )
 
+OAUTH_STEP1_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): cv.string,
+        vol.Required(CONF_PASSWORD): cv.string,
+    }
+)
+
+OAUTH_STEP3_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_REDIRECT_URL): cv.string,
+    }
+)
+
 class AuroraPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """AuroraPlus config flow."""
     VERSION = 0
     MINOR_VERSION = 1
     reauth_entry = None
+    
+    def __init__(self):
+        """Initialize the config flow."""
+        super().__init__()
+        self._oauth_session = None
+        self._auth_url = None
+        self._username = None
+        self._password = None
 
     async def async_step_user(self,
                               user_input: dict[str, Any] | None = None
                               ):
-        _LOGGER.debug(dir(self))
+        """Handle initial step - offer OAuth or manual token."""
+        if user_input is not None:
+            if user_input.get("auth_method") == "oauth":
+                return await self.async_step_oauth_credentials()
+            else:
+                return await self.async_step_manual_token()
+        
+        # Show method selection
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema({
+                vol.Required("auth_method", default="oauth"): vol.In({
+                    "oauth": "OAuth with Aurora credentials (Recommended)",
+                    "manual": "Manual access token entry"
+                })
+            }),
+            description_placeholders={}
+        )
+
+    async def async_step_manual_token(self, user_input=None):
+        """Handle manual token entry step."""
         return await self._configure(user_input)
 
-    async def _configure(self,
-                              user_input: dict[str, Any] | None = None
-                              ):
+    async def _configure(self, user_input=None):
         """
         Get access_token from the user, and create a new service.
 
         If self.reauth_entry is set, this entry will be updated instead.
-
         """
         errors = {}
         if user_input is not None:
@@ -99,7 +141,7 @@ class AuroraPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
 
         return self.async_show_form(
-            step_id="user",
+            step_id="manual_token",
             data_schema=AUTH_SCHEMA,
             errors=errors,
         )
@@ -119,4 +161,88 @@ class AuroraPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 data_schema=vol.Schema({}),
             )
 
-        return await self.async_step_user()
+        return await self.async_step_oauth_credentials()
+
+    async def async_step_oauth_credentials(self, user_input=None):
+        """Handle OAuth credentials step."""
+        errors = {}
+        if user_input is not None:
+            self._username = user_input[CONF_USERNAME]
+            self._password = user_input[CONF_PASSWORD]
+            
+            try:
+                auth_url, oauth_session = await aurora_oauth_authorize(
+                    self.hass, self._username, self._password
+                )
+                self._auth_url = auth_url
+                self._oauth_session = oauth_session
+                return await self.async_step_oauth_authorize()
+            except ConfigEntryAuthFailed:
+                errors["base"] = "invalid_auth"
+            except Exception:
+                errors["base"] = "unknown"
+        
+        return self.async_show_form(
+            step_id="oauth_credentials",
+            data_schema=OAUTH_STEP1_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_oauth_authorize(self, user_input=None):
+        """Display auth URL and wait for user to complete MFA."""
+        if user_input is not None:
+            return await self.async_step_oauth_complete()
+        
+        return self.async_show_form(
+            step_id="oauth_authorize",
+            data_schema=vol.Schema({}),
+            description_placeholders={"auth_url": self._auth_url},
+        )
+
+    async def async_step_oauth_complete(self, user_input=None):
+        """Handle redirect URL and complete OAuth flow."""
+        errors = {}
+        if user_input is not None:
+            redirect_url = user_input[CONF_REDIRECT_URL]
+            
+            try:
+                token_info = await aurora_oauth_complete(
+                    self.hass, self._oauth_session, redirect_url
+                )
+                access_token = token_info.get("access_token")
+                
+                # Validate token and create entry
+                session = await aurora_validate_oauth_token(self.hass, access_token)
+                address = session.month['ServiceAgreements'][session.serviceAgreementID]['PremiseName']
+                await self.async_set_unique_id(session.serviceAgreementID)
+                
+                if self.reauth_entry:
+                    self.hass.config_entries.async_update_entry(
+                        self.reauth_entry,
+                        data={
+                            CONF_ACCESS_TOKEN: access_token,
+                            CONF_SERVICE_AGREEMENT_ID: session.serviceAgreementID,
+                        },
+                    )
+                    await self.hass.config_entries.async_reload(
+                        self.reauth_entry.entry_id)
+                    return self.async_abort(reason="reauth_successful")
+                else:
+                    return self.async_create_entry(
+                        title=address,
+                        data={
+                            CONF_ACCESS_TOKEN: access_token,
+                            CONF_SERVICE_AGREEMENT_ID: session.serviceAgreementID,
+                        },
+                    )
+                    
+            except ConfigEntryAuthFailed:
+                errors["base"] = "invalid_redirect"
+            except Exception:
+                errors["base"] = "unknown"
+        
+        return self.async_show_form(
+            step_id="oauth_complete",
+            data_schema=OAUTH_STEP3_SCHEMA,
+            errors=errors,
+        )

@@ -3,16 +3,49 @@
         "abort": {
             "reauth_successful": "Successfully reauthenticated to Aurora+!"
         },
-        "error": {"auth": "An error occured while authenticating"},
+        "error": {
+            "auth": "An error occurred while authenticating",
+            "invalid_auth": "Invalid Aurora+ username or password",
+            "invalid_redirect": "Invalid redirect URL or OAuth flow failed",
+            "unknown": "An unexpected error occurred"
+        },
         "step": {
             "reauth_confirm": {
                 "description": "The Aurora+ integration needs to re-authenticate your account",
                 "title": "Re-authentication needed"
             },
             "user": {
-                "data": {"access_token": "Access Token"},
+                "data": {
+                    "auth_method": "Authentication Method"
+                },
+                "description": "Choose how you want to authenticate with Aurora+. OAuth is recommended for the best experience.",
+                "title": "Aurora+ Authentication Method"
+            },
+            "oauth_credentials": {
+                "data": {
+                    "username": "Aurora+ Username",
+                    "password": "Aurora+ Password"
+                },
+                "description": "Enter your Aurora+ website credentials. These are used only to generate an access token and are not stored.",
+                "title": "Aurora+ Login"
+            },
+            "oauth_authorize": {
+                "description": "1. Click the link below to open Aurora+ login page\n2. Log in with your credentials\n3. Complete Multi-Factor Authentication (MFA)\n4. You'll be redirected to an error page - this is normal!\n5. Click 'Continue' when ready to proceed\n\n**Authorization URL:** {auth_url}",
+                "title": "Complete Aurora+ Authorization"
+            },
+            "oauth_complete": {
+                "data": {
+                    "redirect_url": "Redirect URL"
+                },
+                "description": "Copy the complete URL from the error page you were redirected to (it should start with 'https://my.auroraenergy.com.au/login/redirect') and paste it below.",
+                "title": "Complete OAuth Setup"
+            },
+            "manual_token": {
+                "data": {
+                    "access_token": "Access Token"
+                },
                 "description": "Go to [this page](https://shtrom.github.io/AuroraPlus/), or follow [these instructions](https://github.com/shtrom/AuroraPlus/tree/oauth-mfa-token?tab=readme-ov-file#obtain-a-token) to obtain an access token.",
-                "title": "Authentication to Aurora+"
+                "title": "Manual Access Token"
             }
         }
     }

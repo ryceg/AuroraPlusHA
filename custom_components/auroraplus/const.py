@@ -4,6 +4,10 @@ DOMAIN = "auroraplus"
 
 CONF_SERVICE_AGREEMENT_ID = "service_agreement_id"
 CONF_ROUNDING = "rounding"
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+CONF_AUTH_URL = "auth_url"
+CONF_REDIRECT_URL = "redirect_url"
 
 SENSOR_ESTIMATEDBALANCE = 'Estimated Balance'
 SENSOR_DOLLARVALUEUSAGE = 'Dollar Value Usage'
