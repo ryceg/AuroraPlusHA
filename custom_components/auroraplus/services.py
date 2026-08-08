@@ -140,7 +140,15 @@ async def _backfill_coordinator(
         days_with_data += 1
         for record in day.get("MeteredUsageRecords") or []:
             if record and record.get("StartTime"):
-                records[record["StartTime"]] = record
+                # The daily cost record shares its midnight StartTime with the
+                # first hourly energy record, so the key must also encode which
+                # fields the record carries or one clobbers the other.
+                key = (
+                    record["StartTime"],
+                    bool(record.get("KilowattHourUsage")),
+                    bool(record.get("DollarValueUsage")),
+                )
+                records[key] = record
 
         if days_with_data % 50 == 0:
             _LOGGER.info(
@@ -160,10 +168,12 @@ async def _backfill_coordinator(
     for sensor in getattr(coordinator, "historical_sensors", []):
         imported += await _import_sensor_statistics(hass, sensor, sorted_records)
 
-    return (
+    line = (
         f"{coordinator.service_agreement_id}: {days_with_data} days, "
         f"{imported} statistics rows imported"
     )
+    _LOGGER.info(f"backfill: done: {line}")
+    return line
 
 
 def _fetch_day(api, index: int) -> dict:

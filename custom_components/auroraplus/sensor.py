@@ -341,9 +341,7 @@ class AuroraHistoricalSensor(HistoricalSensor, SensorEntity):
         )
 
         if not self._attr_historical_states:
-            _LOGGER.debug(
-                f"{self._sensor}: empty historical states for tariff {tariff}"
-            )
+            _LOGGER.debug(f"{self._sensor}: empty historical states")
 
         _LOGGER.debug(
             f"{self._sensor}: historical states: %s", self._attr_historical_states
