@@ -5,6 +5,8 @@ import datetime
 import logging
 
 import voluptuous as vol
+from auroraplus import AuroraPlusAuthenticationError
+from requests.exceptions import HTTPError
 
 from homeassistant.components import persistent_notification
 from homeassistant.components.recorder import get_instance
@@ -18,9 +20,16 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .api import OAuthRefreshExpired, _is_auth_error, aurora_reinit
+from .const import CONF_TOKEN, DOMAIN
+from .coordinator import AuroraPlusCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Accounts with a backfill currently in flight. Concurrent runs would
+# interleave getday() calls on the shared API session and corrupt each
+# other's day data.
+_RUNNING: set[str] = set()
 
 SERVICE_BACKFILL = "backfill"
 
@@ -85,18 +94,29 @@ async def _backfill(
         if entry.state != ConfigEntryState.LOADED:
             continue
         coordinator = entry.runtime_data
+        said = coordinator.service_agreement_id
+        if said in _RUNNING:
+            summary_lines.append(
+                f"{said}: skipped — a backfill is already running for this "
+                "account; wait for it to finish"
+            )
+            continue
+        _RUNNING.add(said)
         try:
             line = await _backfill_coordinator(
-                hass, coordinator, start_date, end_date
+                hass, entry, coordinator, start_date, end_date
+            )
+        except OAuthRefreshExpired:
+            _LOGGER.error(f"backfill: OAuth grant expired for {said}")
+            line = (
+                f"{said}: FAILED — authentication expired; reauthenticate "
+                "the integration and run the backfill again"
             )
         except Exception:
-            _LOGGER.exception(
-                f"backfill failed for {coordinator.service_agreement_id}"
-            )
-            line = (
-                f"{coordinator.service_agreement_id}: FAILED, see log "
-                "for details"
-            )
+            _LOGGER.exception(f"backfill failed for {said}")
+            line = f"{said}: FAILED, see log for details"
+        finally:
+            _RUNNING.discard(said)
         summary_lines.append(line)
 
     persistent_notification.async_create(
@@ -109,6 +129,7 @@ async def _backfill(
 
 async def _backfill_coordinator(
     hass: HomeAssistant,
+    entry,
     coordinator,
     start_date: datetime.date,
     end_date: datetime.date,
@@ -121,20 +142,44 @@ async def _backfill_coordinator(
     first_index = (start_date - today).days
     last_index = min((end_date - today).days, -1)
 
-    records: dict[str, dict] = {}
+    records: dict = {}
     days_with_data = 0
     consecutive_failures = 0
-    for index in range(first_index, last_index + 1):
+    reinit_attempts = 0
+    index = first_index
+    while index <= last_index:
         try:
             day = await hass.async_add_executor_job(_fetch_day, api, index)
             consecutive_failures = 0
+        except (AuroraPlusAuthenticationError, HTTPError) as e:
+            if not _is_auth_error(e) or reinit_attempts >= 3:
+                raise
+            # The access_token only lives ~1h and the library's cookie
+            # refresh is dead — recover via the OAuth refresh_token, the
+            # same way the coordinator does. OAuthRefreshExpired propagates
+            # (only user reauth can fix that).
+            reinit_attempts += 1
+            _LOGGER.warning(
+                f"backfill: auth failure at getday({index}), "
+                f"attempting OAuth refresh ({reinit_attempts}/3): {e}"
+            )
+            refreshed = await hass.async_add_executor_job(
+                aurora_reinit, api, entry.data.get(CONF_TOKEN, {})
+            )
+            if not refreshed:
+                raise
+            # The consumed grant was replaced — persist the new one now.
+            await AuroraPlusCoordinator.update_config_entry_token(hass, entry)
+            continue  # retry the same index
         except Exception as e:
             consecutive_failures += 1
             _LOGGER.warning(f"backfill: getday({index}) failed: {e}")
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 raise
+            index += 1
             continue
 
+        index += 1
         if day.get("NoDataFlag"):
             continue
         days_with_data += 1

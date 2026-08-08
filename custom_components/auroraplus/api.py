@@ -131,12 +131,14 @@ def aurora_reinit(api: AuroraPlusApi, token: dict[str, Any]) -> bool:
         if new_refresh:
             new_api.token["refresh_token"] = new_refresh
 
-        # Copy the refreshed state back onto the existing api object
+        # Copy the refreshed auth state back onto the existing api object —
+        # but NOT serviceAgreementID/premiseAddress: get_info() keeps the
+        # *last* Active premise, and accounts with two active service
+        # agreements get a coin-flip result. Re-auth must never change which
+        # agreement the entry is bound to.
         api.session = new_api.session
         api.token = new_api.token
         api.customerId = new_api.customerId
-        api.serviceAgreementID = new_api.serviceAgreementID
-        api.premiseAddress = new_api.premiseAddress
         api.Active = new_api.Active
         api.Error = new_api.Error
         _LOGGER.info("Successfully re-authenticated via OAuth refresh_token")

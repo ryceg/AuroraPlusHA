@@ -27,6 +27,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     except OSError as err:
         raise PlatformNotReady("Connection to Aurora+ failed") from err
 
+    # get_info() picks the *last* Active premise, which is a coin flip on
+    # accounts with two active service agreements — pin to the agreement this
+    # entry was set up with so sensors and statistics stay bound to it.
+    stored_said = entry.data.get(CONF_SERVICE_AGREEMENT_ID)
+    if stored_said and api.serviceAgreementID != stored_said:
+        _LOGGER.warning(
+            f"get_info picked service agreement {api.serviceAgreementID}; "
+            f"pinning to this entry's stored agreement {stored_said}"
+        )
+        api.serviceAgreementID = stored_said
+
     entry.runtime_data = AuroraPlusCoordinator(hass, entry, api)
 
     # If init had to roll the OAuth token, persist it NOW: the old grant is
