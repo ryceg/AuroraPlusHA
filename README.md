@@ -9,7 +9,9 @@
 > restart. Aurora's B2C refresh token only lives ~7 hours, so this fork rolls it
 > proactively on every update cycle and recovers automatically on startup and on
 > mid-session auth failures. You should only need to paste a fresh token if Home
-> Assistant has been offline for many hours. Forked from
+> Assistant has been offline for many hours. It also adds an
+> `auroraplus.backfill` service to import past usage into long-term statistics
+> — see [Backfilling history](#backfilling-history). Forked from
 > [shtrom/AuroraPlusHA](https://github.com/shtrom/AuroraPlusHA) /
 > [LeighCurran/AuroraPlusHA](https://github.com/LeighCurran/AuroraPlusHA).
 
@@ -59,6 +61,23 @@ Essentially, just run
    aurora_get_token
 
 and follow the instructions (open link, enter MFA, copy URL of error page back).
+
+## Backfilling history
+
+Normally the integration only ingests the most recent day of data, so a new
+install starts with an empty Energy dashboard. The `auroraplus.backfill`
+service fetches everything from a chosen start date up to yesterday and
+imports it into long-term statistics:
+
+1. Go to `Developer tools` / `Actions` and pick `Aurora+: Backfill history`
+   (or call `auroraplus.backfill` from a script).
+2. Set `Start date` to how far back you want data. Aurora holds roughly 3
+   years of history.
+3. The fetch runs in the background (about a minute per year of history);
+   a persistent notification appears when it finishes.
+
+Re-running it is safe: existing rows for the same hours are overwritten in
+place.
 
 ## Running tests
 

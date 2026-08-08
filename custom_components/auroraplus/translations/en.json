@@ -1,4 +1,20 @@
 {
+    "services": {
+        "backfill": {
+            "name": "Backfill history",
+            "description": "Fetches hourly usage and daily cost from Aurora+ for a past date range and imports it into long-term statistics (Energy dashboard). Runs in the background; a persistent notification appears when it finishes.",
+            "fields": {
+                "start_date": {
+                    "name": "Start date",
+                    "description": "Earliest day to fetch. Aurora+ holds roughly 3 years of history."
+                },
+                "end_date": {
+                    "name": "End date",
+                    "description": "Last day to fetch. Defaults to yesterday."
+                }
+            }
+        }
+    },
     "config": {
         "abort": {
             "reauth_successful": "Successfully reauthenticated to Aurora+!"

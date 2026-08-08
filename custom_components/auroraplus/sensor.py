@@ -245,6 +245,7 @@ class AuroraHistoricalSensor(HistoricalSensor, SensorEntity):
         self._coordinator = coordinator
         self._uniqueid = self._name.replace(" ", "_").lower()
         self._rounding = rounding
+        coordinator.historical_sensors.append(self)
         _LOGGER.debug(f"{self._sensor} created (historical)")
 
     @property
@@ -301,14 +302,31 @@ class AuroraHistoricalSensor(HistoricalSensor, SensorEntity):
         """Return the historical state of the sensor."""
         return self._attr_historical_states
 
-    async def async_update_historical(self):
+    def _field_and_tariff(self) -> tuple[str, str]:
+        """Return the MeteredUsageRecords field and tariff this sensor tracks."""
         if self.device_class == SensorDeviceClass.MONETARY:
             tariff = self._sensor.removeprefix(SENSOR_DOLLARVALUEUSAGETARIFF).strip()
             field = "DollarValueUsage"
         elif self._sensor.startswith(SENSOR_KILOWATTHOURUSAGETARIFF):
             tariff = self._sensor.removeprefix(SENSOR_KILOWATTHOURUSAGETARIFF).strip()
             field = "KilowattHourUsage"
+        return field, tariff
 
+    def historical_states_from_records(
+        self, metered_records: list[dict]
+    ) -> list[HistoricalState]:
+        """Build historical states for this sensor from MeteredUsageRecords."""
+        field, tariff = self._field_and_tariff()
+        return [
+            HistoricalState(
+                state=abs(float(r[field][tariff])),
+                timestamp=datetime.datetime.fromisoformat(r["StartTime"]).timestamp(),
+            )
+            for r in metered_records
+            if r and r.get(field) and r.get(field).get(tariff)
+        ]
+
+    async def async_update_historical(self):
         await self._coordinator.async_update()
 
         metered_records = self._coordinator.day.get("MeteredUsageRecords")
@@ -318,14 +336,9 @@ class AuroraHistoricalSensor(HistoricalSensor, SensorEntity):
             )
             return
 
-        self._attr_historical_states = [
-            HistoricalState(
-                state=abs(float(r[field][tariff])),
-                timestamp=datetime.datetime.fromisoformat(r["StartTime"]).timestamp(),
-            )
-            for r in metered_records
-            if r and r.get(field) and r.get(field).get(tariff)
-        ]
+        self._attr_historical_states = self.historical_states_from_records(
+            metered_records
+        )
 
         if not self._attr_historical_states:
             _LOGGER.debug(

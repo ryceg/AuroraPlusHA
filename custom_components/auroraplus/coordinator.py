@@ -40,6 +40,7 @@ class AuroraPlusCoordinator:
         self._api = api
         self.service_agreement_id = api.serviceAgreementID
         self.service_address = api.premiseAddress
+        self.historical_sensors = []
         self.__class__._instances[self.service_agreement_id] = self
         _LOGGER.debug(f"AuroraPlusCoordinator ready with {self._api}")
 

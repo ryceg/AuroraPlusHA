@@ -13,6 +13,7 @@ from homeassistant.exceptions import (
 from .api import aurora_init
 from .const import CONF_SERVICE_AGREEMENT_ID, CONF_TOKEN
 from .coordinator import AuroraPlusCoordinator
+from .services import async_register_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         raise ConfigEntryNotReady("No tariffs in returned data, yet")
 
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
+    async_register_services(hass)
 
     return True
 
