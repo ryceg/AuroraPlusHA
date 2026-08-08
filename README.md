@@ -4,6 +4,15 @@
 
 # Aurora+ for Home Assistant
 
+> **This fork ([ryceg/AuroraPlusHA](https://github.com/ryceg/AuroraPlusHA))** adds automatic
+> OAuth token refresh so you are no longer asked to re-authenticate after every
+> restart. Aurora's B2C refresh token only lives ~7 hours, so this fork rolls it
+> proactively on every update cycle and recovers automatically on startup and on
+> mid-session auth failures. You should only need to paste a fresh token if Home
+> Assistant has been offline for many hours. Forked from
+> [shtrom/AuroraPlusHA](https://github.com/shtrom/AuroraPlusHA) /
+> [LeighCurran/AuroraPlusHA](https://github.com/LeighCurran/AuroraPlusHA).
+
 The Aurora+ integration adds support for retrieving data from the Aurora+ API such as:
 
 - EstimatedBalance - This is shown in the Aurora+ app as 'Balance'

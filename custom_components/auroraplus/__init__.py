@@ -11,7 +11,7 @@ from homeassistant.exceptions import (
 
 
 from .api import aurora_init
-from .const import CONF_TOKEN
+from .const import CONF_SERVICE_AGREEMENT_ID, CONF_TOKEN
 from .coordinator import AuroraPlusCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,6 +27,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         raise PlatformNotReady("Connection to Aurora+ failed") from err
 
     entry.runtime_data = AuroraPlusCoordinator(hass, entry, api)
+
+    # If init had to roll the OAuth token, persist it NOW: the old grant is
+    # already consumed, and the coordinator's own persist is gated on the
+    # entry being LOADED — a crash before then would strand a dead token on
+    # disk and force a reauth.
+    if api.token != entry.data.get(CONF_TOKEN):
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                CONF_SERVICE_AGREEMENT_ID: api.serviceAgreementID,
+                CONF_TOKEN: api.token.copy(),
+            },
+        )
 
     if not (
         hasattr(entry.runtime_data, "week")
